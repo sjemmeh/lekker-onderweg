@@ -1,0 +1,12 @@
+.git
+node_modules
+**/.cache
+.env
+.env.*
+docs
+scratchpad
+compose.yml
+README.md
+LICENSE
+.gitignore
+**/.DS_Store

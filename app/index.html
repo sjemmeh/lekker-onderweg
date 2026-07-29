@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lekker Onderweg</title>
+<meta name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png?v=2">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Lekker Onderweg">
+<style>
+  /* color-scheme:light opts out of engine forced-dark inversion, so the
+     light design renders as intended instead of being auto-darkened */
+  :root { color-scheme:light;
+          --bg:#eae7f7; --card:#fff; --line:#ddd8f0; --purple:#5541a8;
+          --muted:#8b8796; --tabbar:#4a3a8c; }
+  * { box-sizing:border-box; }
+  /* Eén scherm dat precies past: de pagina scrolt niet, je swipet tussen winkels.
+     dvh i.p.v. vh zodat de balk van de browser hem niet afsnijdt. */
+  html { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--purple);
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         height:100%; height:100dvh; overflow:hidden;
+         display:flex; flex-direction:column;
+         padding-bottom:calc(78px + env(safe-area-inset-bottom,0px)); }
+  /* de zijmarge zit op .intro en op elk paneel, niet op .wrap: zo blijft een
+     paneel exact één scherm breed (scrollen klopt) én houden twee winkels
+     ruimte tussen zich in als je langs scrollt */
+  .wrap { max-width:560px; width:100%; margin:0 auto;
+          flex:1; min-height:0; display:flex; flex-direction:column; }
+
+  /* top: SCAN button + explainer, like the app */
+  .intro { flex:none; display:flex; gap:14px; align-items:flex-start;
+           padding:calc(14px + env(safe-area-inset-top,0px)) 16px 14px; }
+  .scan { flex:none; width:72px; height:72px; border:none; cursor:pointer;
+          background:var(--purple); color:#fff; border-radius:10px;
+          display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; }
+  .scan svg { width:26px; height:26px; }
+  .scan span { font-size:11px; font-weight:700; letter-spacing:.5px; }
+  .intro p { margin:0; font-size:15px; line-height:1.35; color:var(--purple); }
+  .intro p.reward { font-weight:700; }
+
+  .shoplogo { display:block; height:26px; max-width:45%; object-fit:contain; margin:10px auto 20px; }
+
+  .stampcard { background:var(--card); border:1px solid var(--line); border-radius:14px;
+               padding:16px; margin-bottom:14px; }
+  .top { display:flex; gap:14px; align-items:center; margin-bottom:16px; }
+  .thumb { width:58px; height:58px; border-radius:12px; object-fit:cover; background:#f0eef8; flex:none; }
+  .title { font-weight:800; font-size:19px; color:var(--purple); line-height:1.15; }
+  .sub { color:var(--muted); font-size:14px; margin-top:2px; }
+  /* stamps are the store's own stickers, straight from the app */
+  .stamps { display:grid; gap:14px; justify-items:center; }
+  .stamps img { width:100%; max-width:46px; aspect-ratio:1; object-fit:contain; }
+
+  .state { text-align:center; padding:40px 16px; color:var(--purple); }
+
+  /* De winkels staan als panelen naast elkaar in één scrollbare rij. De browser
+     doet het scrollen én het vastklikken (scroll-snap), dus het volgt je vinger
+     meteen — geen eigen swipe-detectie of animaties nodig.
+     Verticaal scrollen kan binnen een paneel; normaal past alles, maar krijgt
+     een winkel ooit meer kaarten dan raakt er zo niets onbereikbaar. */
+  .stage { flex:1; min-height:0; display:flex;
+           overflow-x:auto; overflow-y:hidden;
+           scroll-snap-type:x mandatory; overscroll-behavior-x:contain;
+           -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .stage::-webkit-scrollbar { display:none; }
+  /* flex-basis 100% telt tegen de breedte van de scroller, dus precies één
+     scherm per winkel. scroll-snap-stop:always zorgt dat een snelle veeg er
+     ééntje opschuift in plaats van er meerdere voorbij te vliegen. */
+  .panel { flex:0 0 100%; min-width:0; scroll-snap-align:start; scroll-snap-stop:always;
+           overflow-y:auto; overscroll-behavior-y:contain; scrollbar-width:none;
+           padding:0 18px; }   /* 18 links + 18 rechts = 36px lucht tussen winkels */
+  .panel::-webkit-scrollbar { display:none; }
+  .state { flex:0 0 100%; }
+  @media (prefers-reduced-motion:reduce) {
+    .stage { scroll-behavior:auto; }
+    .tab, .tab img, .tab .dot { transition:none; }
+  }
+
+  /* bottom tab bar */
+  .tabbar { position:fixed; left:0; right:0; bottom:0; background:var(--tabbar); z-index:10; }
+  .tabbar-inner { max-width:560px; margin:0 auto; display:flex; align-items:stretch; }
+  .tab { flex:1 1 0; min-width:0; background:none; border:none; cursor:pointer; color:#fff;
+         padding:16px 6px calc(14px + env(safe-area-inset-bottom,0px));
+         display:flex; flex-direction:column; align-items:center; gap:7px;
+         opacity:.45; position:relative; }
+  .tab { transition:opacity .22s ease; }
+  .tab.active { opacity:1; }
+  .tab:active { transform:scale(.94); }
+  .tab img { height:20px; max-width:80%; object-fit:contain; filter:brightness(0) invert(1);
+             transition:transform .22s cubic-bezier(.22,.61,.36,1); }
+  .tab.active img { transform:translateY(-1px) scale(1.06); }
+  .tab .glyph { font-size:19px; line-height:20px; }
+  /* tabs are built once and only toggled, so the dot can transition */
+  .tab .dot { width:5px; height:5px; border-radius:50%; background:#fff;
+              transition:opacity .22s ease, transform .28s cubic-bezier(.34,1.56,.64,1); }
+  .tab .dot.hidden { opacity:0; transform:scale(0); }
+  .tab .bell { position:absolute; top:12px; right:26%; width:8px; height:8px;
+               border-radius:50%; background:#e8a13a; }
+
+  /* QR screen — 1:1 with the app's scan view (this is what the cashier sees) */
+  .qr-screen { position:fixed; inset:0; z-index:20; display:none; flex-direction:column;
+               background:#5b4bc4; color:#fff; overflow:hidden; }
+  .qr-screen.show { display:flex; }
+  .qr-head { display:flex; align-items:center; justify-content:space-between; flex:none;
+             padding:calc(22px + env(safe-area-inset-top,0px)) 16px 22px;
+             border-bottom:1px solid rgba(255,255,255,.24); }
+  .qr-head h2 { margin:0; font-size:18px; font-weight:800; }
+  .qr-close { background:none; border:none; color:#fff; font-size:21px; font-weight:300;
+              line-height:1; cursor:pointer; padding:0 2px; }
+  .qr-head, .qr-intro, .qr-card { position:relative; z-index:1; }
+  /* scaled so the app's 61-char first line fits on one line at phone widths,
+     matching the app's two-line block (the <br> pins the same break point) */
+  .qr-intro { margin:24px 16px 21px; line-height:1.45;
+              font-size:clamp(10.5px, 3.05vw, 14px); }
+  .qr-card { background:#fff; border-radius:12px; margin:0 16px; padding:20px; flex:none;
+             display:flex; gap:14px; }
+  .qr-card > img { width:51%; flex:none; aspect-ratio:1;
+                   align-self:flex-start; image-rendering:pixelated; }
+  .qr-right { flex:1; min-width:0; display:flex; flex-direction:column;
+              justify-content:space-between; text-align:right; }
+  .qr-cta { color:#5b4bc4; font-weight:800; font-size:17px; line-height:1.25; }
+  .qr-no { color:#3f3d49; font-size:12px; font-variant-numeric:tabular-nums; }
+  /* app's own drawable/ic_background (361x318), match_parent width + bottom
+     aligned exactly as its layout specifies. Must span the full width (slight
+     overshoot avoids a subpixel sliver) — any inset shows purple at the edges
+     where the shadow should reach. */
+  .qr-illu { position:absolute; left:-0.5%; bottom:0; width:101%; z-index:0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="intro">
+      <button class="scan" onclick="showQR()" aria-label="Toon QR-code">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm10-2h2v2h-2v-2zm4 0h2v2h-2v-2zm-4 4h2v2h-2v-2zm2 2h2v2h-2v-2zm2-2h2v2h-2v-2zm0 4h2v2h-2v-2z"/>
+        </svg>
+        <span>SCAN</span>
+      </button>
+      <p id="intro">Sparen is lekker makkelijk! Scan de QR-code bij je aankoop. Bij een volle spaarkaart krijg je het volgende product gratis.</p>
+    </div>
+    <!-- de scroller ís de rij panelen: zo is 100% breed ook echt één scherm -->
+    <div class="stage" id="stage"></div>
+  </div>
+
+  <nav class="tabbar"><div class="tabbar-inner" id="tabs"></div></nav>
+
+  <div class="qr-screen" id="qrback">
+    <div class="qr-head">
+      <h2>Lekker Onderweg</h2>
+      <button class="qr-close" onclick="hideQR()" aria-label="Sluiten">&#10005;</button>
+    </div>
+    <p class="qr-intro">Scan mij vóór het betalen van je aankoop. Het kan daarna even<br>duren voordat je nieuwe spaarzegels zichtbaar zijn in de app.</p>
+    <div class="qr-card">
+      <img id="qrimg" alt="QR-code" src="">
+      <div class="qr-right">
+        <div class="qr-cta">Scan mij vóór<br>het betalen</div>
+        <div class="qr-no" id="qrno"></div>
+      </div>
+    </div>
+    <img class="qr-illu" src="/illustration.svg?v=2" alt="">
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const decode = (s) => { const t = document.createElement("textarea"); t.innerHTML = s ?? ""; return t.value; };
+const SHOP_ORDER = ["Kiosk", "Julia's", "Stationshuiskamer"];
+const shopRank = (s) => { const i = SHOP_ORDER.findIndex((x) => x.toLowerCase() === (s || "").toLowerCase()); return i < 0 ? [1, s] : [0, i]; };
+// maps a shop to its logo + sticker set, both extracted from the app's APK
+const shopKey = (shop) => {
+  const s = (shop || "").toLowerCase();
+  if (s.includes("kiosk")) return "kiosk";
+  if (s.includes("julia")) return "julias";
+  if (s.includes("huiskamer") || s.startsWith("sh")) return "sh";
+  return null;
+};
+
+let state = { groups: {}, shops: [], active: null };
+
+function cardHTML(c, key) {
+  const need = c.TXNeeded ?? 6, have = c.TXArchived ?? 0;
+  const src = c.FrontImage?.[0]?.ImageLink || "";
+  let stamps = "";
+  for (let i = 0; i < need; i++)
+    stamps += key
+      ? `<img src="/stickers/${key}-${i < have ? "on" : "off"}.png?v=2" alt="">`
+      : `<span class="glyph">${i < have ? "●" : "○"}</span>`;
+  return `
+    <div class="stampcard">
+      <div class="top">
+        ${src ? `<img class="thumb" src="${src}" onerror="this.style.visibility='hidden'">` : `<div class="thumb"></div>`}
+        <div><div class="title">${decode(c.Description)}</div><div class="sub">${decode(c.Preview) || ""}</div></div>
+      </div>
+      <div class="stamps" style="grid-template-columns:repeat(${need},1fr)">${stamps}</div>
+    </div>`;
+}
+
+// built once per data load; switching shops only toggles classes, so the tab
+// dot/logo can transition instead of being replaced mid-animation
+function renderTabs() {
+  const bar = $("tabs");
+  bar.textContent = "";
+  for (const shop of state.shops) {
+    const key = shopKey(shop);
+    const btn = document.createElement("button");
+    btn.className = "tab";
+    btn.dataset.shop = shop;                 // dataset avoids quote-escaping ("Julia's")
+    btn.setAttribute("aria-label", shop);
+    btn.innerHTML =
+      (key ? `<img src="/logos/${key}.svg?v=2" alt="${decode(shop)}">`
+           : `<span class="glyph">${decode(shop)}</span>`) +
+      (state.groups[shop].some((c) => c.ChallengeOK) ? `<span class="bell"></span>` : "") +
+      `<span class="dot"></span>`;
+    btn.addEventListener("click", () => selectShop(shop));
+    bar.appendChild(btn);
+  }
+  syncTabs();
+}
+
+function syncTabs() {
+  for (const btn of $("tabs").children) {
+    const active = btn.dataset.shop === state.active;
+    btn.classList.toggle("active", active);
+    btn.querySelector(".dot").classList.toggle("hidden", !active);
+  }
+}
+
+// Alle winkels staan naast elkaar in één rij; de browser doet het scrollen en
+// het vastklikken (CSS scroll-snap). Daardoor volgt het je vinger meteen en
+// hoeven we zelf geen swipes te detecteren of animaties te draaien.
+function renderPanels() {
+  $("stage").innerHTML = state.shops.map((shop) => {
+    const key = shopKey(shop);
+    const cards = state.groups[shop] || [];
+    return `<section class="panel" data-shop="${decode(shop)}">
+      ${key ? `<img class="shoplogo" src="/logos/${key}.svg?v=2" alt="${decode(shop)}">` : ""}
+      ${cards.map((c) => cardHTML(c, key)).join("")}
+    </section>`;
+  }).join("");
+}
+
+function selectShop(shop) {
+  const i = state.shops.indexOf(shop);
+  if (i < 0) return;
+  state.active = shop;
+  syncTabs();
+  $("stage").scrollTo({ left: i * $("stage").clientWidth, behavior: "smooth" });
+}
+
+// tijdens het scrollen meebewegen met de tabbalk
+function syncFromScroll() {
+  const stage = $("stage");
+  const i = Math.round(stage.scrollLeft / stage.clientWidth);
+  const shop = state.shops[Math.max(0, Math.min(i, state.shops.length - 1))];
+  if (shop && shop !== state.active) { state.active = shop; syncTabs(); }
+}
+
+function render(list) {
+  const full = list.filter((c) => c.ChallengeOK).length;
+  $("intro").className = full ? "reward" : "";
+  $("intro").textContent = full
+    ? `Je hebt ${full} volle spaarkaart${full === 1 ? "" : "en"} — scan de QR-code en haal je gratis product op! 🎉`
+    : "Sparen is lekker makkelijk! Scan de QR-code bij je aankoop. Bij een volle spaarkaart krijg je het volgende product gratis.";
+
+  const groups = {};
+  for (const c of list) (groups[c.Shop || "Overig"] ??= []).push(c);
+  const shops = Object.keys(groups).sort((a, b) => {
+    const [ra, va] = shopRank(a), [rb, vb] = shopRank(b);
+    return ra - rb || (va < vb ? -1 : va > vb ? 1 : 0);
+  });
+  // only rebuild the tab bar when the shops actually change — otherwise the 10s
+  // refresh would recreate those nodes constantly and kill their transitions
+  const same = state.shops.length === shops.length && state.shops.every((s, i) => s === shops[i]);
+  state = { groups, shops, active: shops.includes(state.active) ? state.active : shops[0] };
+  if (same && $("tabs").children.length) syncTabs(); else renderTabs();
+
+  // de 10s-verversing bouwt de panelen opnieuw op; zet de scrollpositie daarna
+  // meteen terug, anders spring je bij elke ronde naar de eerste winkel
+  const stage = $("stage");
+  renderPanels();
+  const i = Math.max(0, state.shops.indexOf(state.active));
+  stage.scrollLeft = i * stage.clientWidth;
+}
+
+// silent=true for background polls: no spinner, and a failed poll leaves the
+// cards you're looking at on screen instead of replacing them with an error
+async function load(silent) {
+  if (!silent) $("stage").innerHTML = `<div class="state">Laden…</div>`;
+  try {
+    const r = await fetch("/api/balance");
+    const data = await r.json();
+    if (!r.ok || !Array.isArray(data)) {
+      if (!silent) $("stage").innerHTML = `<div class="state">Kon de kaart niet laden (${r.status}). ${(data && data.error) || ""}</div>`;
+      return;
+    }
+    render(data);
+  } catch (e) {
+    if (!silent) $("stage").innerHTML = `<div class="state">Netwerkfout: ${e}</div>`;
+  }
+}
+
+async function showQR() {
+  $("qrimg").src = "/api/qr?" + Date.now();
+  try { const { card } = await (await fetch("/api/card")).json(); $("qrno").textContent = card || ""; } catch {}
+  $("qrback").classList.add("show");
+}
+const hideQR = () => $("qrback").classList.remove("show");
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideQR(); });
+
+load();
+
+// refresh every 10s, but only while actually on screen (no polling in the
+// background) — plus an immediate refresh the moment you come back to it.
+// Pull-to-refresh still works: it's the browser's native gesture.
+const visible = () => document.visibilityState === "visible";
+setInterval(() => { if (visible()) load(true); }, 10_000);
+document.addEventListener("visibilitychange", () => { if (visible()) load(true); });
+
+// Tabbalk meelopen met het scrollen. De browser vuurt dit vaak af, dus we doen
+// het werk in een rAF en alleen als de actieve winkel echt verandert.
+let ticking = false;
+$("stage").addEventListener("scroll", () => {
+  if (ticking) return;
+  ticking = true;
+  requestAnimationFrame(() => { ticking = false; syncFromScroll(); });
+}, { passive: true });
+
+// bij draaien/resizen klopt de pixelpositie niet meer; opnieuw uitlijnen
+addEventListener("resize", () => {
+  const stage = $("stage");
+  stage.scrollLeft = Math.max(0, state.shops.indexOf(state.active)) * stage.clientWidth;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# secrets + local state
+.env
+**/.cache/
+
+# deps
+node_modules/
+
+# Extracted brand resources — pulled from your own copy of the app at setup
+# (see extract/ and the README), never committed. Trademarks and artwork
+# belong to their owners.
+app/public/logos/
+app/public/stickers/
+app/public/icons/
+app/public/illustration.svg
+
+# OS / editor junk
+.DS_Store
+**/.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# logs
+*.log
+*.xapk

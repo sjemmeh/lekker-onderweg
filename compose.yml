@@ -1,0 +1,26 @@
+services:
+  # De build haalt de merk-assets zelf uit de .xapk in ./xapk (zie Dockerfile).
+  lekker-onderweg:
+    build: .
+    image: lekker-onderweg
+    container_name: lekker-onderweg
+    restart: unless-stopped
+    # host 8790 -> container 8787. Wil je hem alleen via je VPN bereikbaar maken,
+    # zet er dan het adres van die interface voor: "<vpn-ip>:8790:8787".
+    ports:
+      - "8790:8787"
+    volumes:
+      # secrets stay on the host, read by Bun inside the container (handles the
+      # '#' in NS_PASSWORD correctly, unlike compose env_file)
+      - ./.env:/srv/.env:ro
+      # persist the product-image cache across restarts
+      - lekker-cache:/srv/app/.cache
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/api/card"]
+      interval: 1m
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  lekker-cache:

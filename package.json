@@ -1,0 +1,14 @@
+{
+  "name": "lekker-onderweg",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "extract": "bun extract/extract-assets.ts",
+    "start": "bun app/server.ts",
+    "dev": "bun --watch app/server.ts"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}
