@@ -58,8 +58,10 @@ een pad meegeven: `bun run extract ~/Downloads/lekker-onderweg.xapk`. Alles komt
 cp .env.example .env
 ```
 
-`CARD_ID` is je kaartnummer, de cijfers die onder je QR-code staan. De
-`NS_*`-variabelen zijn de API-URL, de drie auth-headers die de app meestuurt, en
+Je kaartnummer staat niet in `.env` maar in de URL: open
+`http://localhost:8787/<kaartnummer>` (de cijfers onder je QR-code). Op `/` staat
+een invulveld dat je daarheen stuurt. Iedereen met die link ziet die kaart, dus
+deel hem zoals je je QR-code zou delen. De `NS_*`-variabelen zijn de API-URL, de drie auth-headers die de app meestuurt, en
 de host waar de productplaatjes vandaan komen; wat elke variabele doet staat in
 `.env.example`. Let op dat je `NS_PASSWORD` tussen aanhalingstekens zet als er een
 `#` in zit, anders leest Bun de rest als commentaar.
@@ -75,7 +77,7 @@ jaimie@sjemmeh.com.
 bun start
 ```
 
-Staat op <http://localhost:8787>. `bun run dev` als je aan het sleutelen bent, die
+Staat op <http://localhost:8787/kaartnummer>. `bun run dev` als je aan het sleutelen bent, die
 herstart bij wijzigingen.
 
 ## Docker
@@ -99,7 +101,7 @@ app/        de webapp: server.ts en index.html
   public/   hier komen de plaatjes (staat in .gitignore)
 extract/    haalt die plaatjes uit de APK
 xapk/       hier zet je de xapk neer (wordt ook niet meegecommit)
-.env        jouw kaartnummer en de API-gegevens
+.env        de API-gegevens (het kaartnummer zit in de URL)
 ```
 
 De server zit ertussen omdat het niet anders kan: de API wil drie eigen headers,

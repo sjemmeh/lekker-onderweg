@@ -16,7 +16,7 @@ services:
       # persist the product-image cache across restarts
       - lekker-cache:/srv/app/.cache
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/api/card"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/"]
       interval: 1m
       timeout: 5s
       retries: 3
