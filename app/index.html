@@ -180,6 +180,8 @@ const shopKey = (shop) => {
   return null;
 };
 
+// het kaartnummer staat in de URL: /<nummer>
+const CARD = location.pathname.split("/")[1] || "";
 let state = { groups: {}, shops: [], active: null };
 
 function cardHTML(c, key) {
@@ -292,7 +294,7 @@ function render(list) {
 async function load(silent) {
   if (!silent) $("stage").innerHTML = `<div class="state">Laden…</div>`;
   try {
-    const r = await fetch("/api/balance");
+    const r = await fetch("/api/balance?card=" + CARD);
     const data = await r.json();
     if (!r.ok || !Array.isArray(data)) {
       if (!silent) $("stage").innerHTML = `<div class="state">Kon de kaart niet laden (${r.status}). ${(data && data.error) || ""}</div>`;
@@ -305,8 +307,8 @@ async function load(silent) {
 }
 
 async function showQR() {
-  $("qrimg").src = "/api/qr?" + Date.now();
-  try { const { card } = await (await fetch("/api/card")).json(); $("qrno").textContent = card || ""; } catch {}
+  $("qrimg").src = "/api/qr?card=" + CARD;
+  $("qrno").textContent = CARD;
   $("qrback").classList.add("show");
 }
 const hideQR = () => $("qrback").classList.remove("show");

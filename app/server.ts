@@ -10,24 +10,24 @@
 // The balance response has no shop field, so the shop comes from /campaigns.
 //
 // ponytail: there is no per-user login — a card is just its number, and the
-// balance endpoint already returns ALL stamp cards for that number. One CARD_ID
-// in .env = all your rewards.
+// balance endpoint already returns ALL stamp cards for that number. The card
+// comes from the URL: https://<host>/<cardnumber>. Anyone with that URL sees
+// that card, so treat the link like the QR code itself.
 
 import QRCode from "qrcode";
 import { mkdirSync } from "node:fs";
 
 const PORT = Number(Bun.env.PORT ?? 8787);
-const CARD = (Bun.env.CARD_ID ?? "").trim();
 const API = (Bun.env.NS_API_BASE ?? "").replace(/\/+$/, "");
 const KEY = Bun.env.NS_SUBSCRIPTION_KEY ?? "";
 const PROVIDER = Bun.env.NS_PROVIDER ?? "";
 const PASSWORD = Bun.env.NS_PASSWORD ?? "";
 
-// What the in-store scanner reads. The app's QR encodes the bare card number
-// (verified by decoding the app's own QR). Change here if that ever differs.
-const QR_PAYLOAD = CARD;
+// The in-store scanner reads the bare card number (verified by decoding the
+// app's own QR), so the URL segment is also the QR payload.
+const CARD_RE = /^\d{6,25}$/;
 
-for (const [k, v] of Object.entries({ CARD_ID: CARD, NS_API_BASE: API, NS_SUBSCRIPTION_KEY: KEY, NS_PROVIDER: PROVIDER, NS_PASSWORD: PASSWORD }))
+for (const [k, v] of Object.entries({ NS_API_BASE: API, NS_SUBSCRIPTION_KEY: KEY, NS_PROVIDER: PROVIDER, NS_PASSWORD: PASSWORD }))
   if (!v) console.warn(`⚠  ${k} is empty in .env`);
 // zonder deze blijven de afbeeldingen werken, ze komen dan alleen rechtstreeks
 // van de bron in plaats van uit de lokale cache
@@ -57,13 +57,11 @@ async function getShopMap(): Promise<Map<number, ShopInfo>> {
   return m;
 }
 
-// Bound to CARD from .env on purpose: behind a public tunnel this only ever
-// reveals your own card, never an open lookup for arbitrary numbers.
-async function balance(): Promise<Response> {
-  if (!/^\d{6,25}$/.test(CARD))
-    return Response.json({ error: "CARD_ID missing/invalid in .env (digits only)" }, { status: 400 });
+async function balance(card: string): Promise<Response> {
+  if (!CARD_RE.test(card))
+    return Response.json({ error: "kaartnummer ontbreekt/ongeldig (alleen cijfers)" }, { status: 400 });
   try {
-    const [bRes, map] = await Promise.all([apiGet(`/cards/${CARD}/balance`), getShopMap()]);
+    const [bRes, map] = await Promise.all([apiGet(`/cards/${card}/balance`), getShopMap()]);
     if (!bRes.ok) return new Response(await bRes.text(), { status: bRes.status });
     const cards = (await bRes.json()) as any[];
     for (const c of cards) {
@@ -81,11 +79,9 @@ async function balance(): Promise<Response> {
   }
 }
 
-let qrSvg = "";
-async function qr(): Promise<Response> {
-  if (!qrSvg && /^\d+$/.test(QR_PAYLOAD))
-    qrSvg = await QRCode.toString(QR_PAYLOAD, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
-  return new Response(qrSvg || "<svg/>", { headers: { "content-type": "image/svg+xml; charset=utf-8" } });
+async function qr(card: string): Promise<Response> {
+  const svg = CARD_RE.test(card) ? await QRCode.toString(card, { type: "svg", margin: 1, errorCorrectionLevel: "M" }) : "<svg/>";
+  return new Response(svg, { headers: { "content-type": "image/svg+xml; charset=utf-8" } });
 }
 
 // --- product-image cache: fetch each CDN image once, then serve from disk ---
@@ -129,20 +125,38 @@ async function serveStatic(name: string): Promise<Response> {
 }
 
 const page = await Bun.file(new URL("./index.html", import.meta.url)).text();
+const manifest = await Bun.file(new URL("./public/manifest.webmanifest", import.meta.url)).json();
+
+// Geen kaart in de URL: vraag erom en stuur door naar /<nummer>.
+const landing = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lekker Onderweg</title>
+<form onsubmit="location='/'+card.value.replace(/\\D/g,'');return false"
+      style="font-family:sans-serif;max-width:360px;margin:20vh auto;padding:0 16px;color:#5541a8">
+  <label>Kaartnummer (de cijfers onder je QR-code)<br>
+    <input name="card" inputmode="numeric" pattern="[0-9 ]{6,30}" required autofocus
+           style="width:100%;font-size:18px;margin:8px 0;padding:8px"></label>
+  <button style="font-size:16px;padding:8px 16px">Open</button>
+</form>`;
 
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
-    const { pathname } = new URL(req.url);
-    if (pathname === "/" || pathname === "/index.html")
+    const { pathname, searchParams } = new URL(req.url);
+    const html = { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" };
+    if (pathname === "/") return new Response(landing, { headers: html });
+    const m = pathname.match(/^\/(\d{6,25})\/?$/);
+    if (m)
       // no-cache so an updated page always reaches installed PWAs; the assets it
-      // references are versioned (?v=N) and stay long-cached
-      return new Response(page, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
-    if (pathname === "/api/balance") return balance();
-    if (pathname === "/api/qr") return qr();
-    if (pathname === "/api/card") return Response.json({ card: CARD });
-    if (pathname === "/img") return image(new URL(req.url).searchParams.get("u") || "");
-    if (pathname === "/manifest.webmanifest") return serveStatic("manifest.webmanifest");
+      // references are versioned (?v=N) and stay long-cached. The manifest link
+      // carries the card so an installed PWA opens on this card again.
+      return new Response(page.replace("/manifest.webmanifest", `/manifest.webmanifest?card=${m[1]}`), { headers: html });
+    const card = searchParams.get("card") || "";
+    if (pathname === "/api/balance") return balance(card);
+    if (pathname === "/api/qr") return qr(card);
+    if (pathname === "/img") return image(searchParams.get("u") || "");
+    if (pathname === "/manifest.webmanifest")
+      return Response.json({ ...manifest, id: `/${card}`, start_url: `/${card}`, scope: `/${card}` },
+        { headers: { "content-type": MIME.webmanifest } });
     if (pathname === "/illustration.svg") return serveStatic("illustration.svg");
     if (pathname.startsWith("/logos/") || pathname.startsWith("/icons/") || pathname.startsWith("/stickers/"))
       return serveStatic(pathname.slice(1));
@@ -150,16 +164,8 @@ const server = Bun.serve({
   },
 });
 
-// load on start: fetch once so bad credentials/card surface in the log immediately.
-balance().then(async (r) => {
-  let note = `HTTP ${r.status}`;
-  if (r.ok) {
-    const cards = (await r.clone().json()) as Array<{ TXArchived?: number; ChallengeOK?: boolean; Shop?: string }>;
-    const stamps = cards.reduce((s, c) => s + (c.TXArchived ?? 0), 0);
-    const full = cards.filter((c) => c.ChallengeOK).length;
-    const shops = [...new Set(cards.map((c) => c.Shop))].join(", ");
-    note = `${stamps} stamps, ${full} full — shops: ${shops}`;
-  }
-  console.log(`\n  Lekker Onderweg → http://localhost:${server.port}`);
-  console.log(`  card ${CARD || "UNSET"} — ${note}\n`);
+// campaigns once at start so bad credentials surface in the log immediately
+getShopMap().then((m) => {
+  console.log(`\n  Lekker Onderweg → http://localhost:${server.port}/<kaartnummer>`);
+  console.log(`  campaigns: ${m.size ? [...new Set([...m.values()].map((s) => s.shop))].join(", ") : "NONE (check NS_* in .env)"}\n`);
 });
